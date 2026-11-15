@@ -26,7 +26,9 @@
   const srcset = sizes => sizes.map(s => `${s.src} ${s.w}w`).join(', ');
   const pick = (sizes, px) => (sizes.find(s => s.w >= px) || sizes[sizes.length - 1]).src;
   const done = el => Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished));
-  let projects = [], cur = null, pushed = false, held = false, shut = -1e9;
+  // a tile's width (app.css: 2/3/4 columns inside --pad = clamp(32px, 16vw, 320px) on each side, --gap, max 1680px)
+  const TILE_SIZES = '(min-width:2000px) min(calc(25vw - 178px), 402px), (min-width:1500px) calc(17vw - 18px), (min-width:1240px) 15.8vw, (min-width:750px) 21.6vw, (min-width:700px) calc(22.7vw - 8px), calc(34vw - 6px)';
+  let projects = [], tiles = [], cur = null, pushed = false, held = false, shut = -1e9;
   // old browsers that cannot add up animations of registered properties get the end states without the way between
   const probe = body.animate({ '--fw': [2, 4] }, { duration: 1000, composite: 'add' });
   probe.pause(); probe.currentTime = 500;
@@ -48,14 +50,16 @@
     projects = d.projects.filter(p => !p.hidden && p.photos.length);
     const start = projects.findIndex(p => p.id === decodeURIComponent(location.hash.slice(1)));
     held = start >= 0;   // deep link: the covers are hidden anyway, they load after the photo (release)
+    const cols = innerWidth >= 1240 ? 4 : innerWidth >= 700 ? 3 : 2;   // as the grid in app.css
     projects.forEach((p, n) => {
       const li = document.createElement('li'), a = held ? 'data-' : '';
       li.className = 'tile';
       const label = p.name || `Stavba ${n + 1}`;
+      // first row first; rows below the fold only when scrolled near
+      const prio = held ? '' : n < cols ? 'fetchpriority="high"' : n >= 2 * cols ? 'loading="lazy"' : '';
       li.innerHTML = `<button aria-label="${label} – fotky (${p.photos.length})">
         <img ${a}src="${pick(p.cover.sizes, 800)}" ${a}srcset="${srcset(p.cover.sizes)}"
-             sizes="(min-width:1240px) 17vw, (min-width:700px) 22vw, 33vw"
-             alt="" ${n > 7 ? 'loading="lazy"' : ''} decoding="async">
+             sizes="${TILE_SIZES}" alt="" ${prio} decoding="async">
         ${p.name ? `<span class="cap">${p.name}</span>` : ''}</button>`;
       const btn = li.querySelector('button');
       // not the second click of a double click, and not while the tiles are only just coming back
@@ -65,6 +69,7 @@
       btn.addEventListener('pointerenter', warm); btn.addEventListener('focus', warm);
       grid.append(li);
     });
+    tiles = [...grid.children];
     if (held) return open(start, true);
     body.classList.remove('open'); viewer.classList.remove('on');
     requestAnimationFrame(() => root.classList.remove('instant'));
@@ -76,13 +81,27 @@
     for (const img of grid.querySelectorAll('img[data-src]')) { img.srcset = img.dataset.srcset; img.src = img.dataset.src; }
     warmAll();
   }
-  // once the covers are in and the browser is idle: the small variant of every first photo, one at a time.
-  // A click then flies the whole photo from its first frame, also on touch where no hover announces it.
-  async function warmAll() {
-    if (navigator.connection?.saveData) return;
-    await Promise.all([...grid.querySelectorAll('img')].slice(0, 8).map(i => i.complete || new Promise(r => { i.onload = i.onerror = r; })));
-    await new Promise(r => (window.requestIdleCallback || setTimeout)(r));
-    for (const p of projects) await load(p.photos[0].sizes[0].src, 'low').ready;
+  // the first photo of every house whose tile is on screen, in the variant ~960 px a click flies when hover has not
+  // fetched the sharp one: once the covers on screen are in and the browser is idle, one at a time. A click then
+  // flies the whole photo from its first frame, also on touch where no hover announces it. Tiles scrolled into
+  // view later join the queue; hidden ones (below the fold, behind the viewer) wait. Not on data saver / 2g.
+  let io = null, warmed = new WeakSet(), queue = Promise.resolve();
+  const loaded = i => i.complete || new Promise(r => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); });
+  const idle = () => new Promise(r => (window.requestIdleCallback || setTimeout)(r));
+  function warmAll() {
+    const net = navigator.connection;
+    if (net?.saveData || /2g/.test(net?.effectiveType || '') || !window.IntersectionObserver) return;
+    io ||= new IntersectionObserver(es => {
+      const vis = es.filter(e => e.isIntersecting && !warmed.has(e.target)).map(e => e.target);
+      if (cur || !vis.length) return;   // behind the viewer: looked at again when it closes (warmAll)
+      vis.forEach(li => warmed.add(li));
+      queue = queue.then(async () => {
+        await Promise.all(vis.map(li => loaded(li.querySelector('img'))));
+        await idle();
+        for (const li of vis) if (!cur) await load(pick(projects[tiles.indexOf(li)].photos[0].sizes, 960), 'low').ready;
+      });
+    });
+    for (const li of tiles) if (!warmed.has(li)) { io.unobserve(li); io.observe(li); }   // (re)observing reports the current state
   }
 
   // where a photo of the given aspect ratio sits in the viewer (measured on the viewer itself):
@@ -158,9 +177,12 @@
     for (const [k, v] of Object.entries({ X: t.x, Y: t.y, W: t.w, H: t.h, cx: pos[0], cy: pos[1], ox, oy })) img.style.setProperty('--' + k, v);
   }
   const cover = timg => Object.assign(new Image(), { src: timg.currentSrc || timg.src || timg.dataset.src, alt: '', draggable: false });
-  // the first photo for the way tile <-> viewer: sharp, else small, else the tile's own cover
+  // the sharpest variant of a photo that is already decoded (shown only until the wanted one is in)
+  const ready = ph => ph.sizes.map(s => cache.get(s.src)).filter(e => e?.ok).pop();
+  // the first photo for the way tile <-> viewer: sharp, else a smaller one that is ready, else the tile's own cover
   function first(c) {
-    const ph = projects[c.n].photos[0], hi = load(photoSrc(ph, target(ph.ratio).w)), lo = load(ph.sizes[0].src), e = hi.ok ? hi : lo.ok ? lo : null;
+    const ph = projects[c.n].photos[0], hi = load(photoSrc(ph, target(ph.ratio).w)), e = hi.ok ? hi : ready(ph);
+    load(ph.sizes[0].src);   // the small one too: whichever comes first
     return e ? layer(c, take(e), 0) : layer(c, cover(c.btn.querySelector('img')), 0, true);
   }
   // let go of every layer that rides the frame: it gets the frame's rest rect and running moves as
@@ -215,7 +237,7 @@
     dissolve(c, ms('--t-fade') * (hurry ? .6 : 1), 'linear');
     settle(c, ++c.gen);
   }
-  // show photo c.i as soon as an image of it is ready: the small one (shared with the strip) if the
+  // show photo c.i as soon as an image of it is ready: a smaller one (the smallest is shared with the strip) if the
   // sharp one is late, then the sharp one over it – same place and size, so that is only a sharpening.
   // Everything else is fetched once this one is in.
   async function present(c) {
@@ -223,8 +245,9 @@
     const live = () => cur === c && c.i === i && !c.closing;
     if (c.deep && !c.top && !lo.ok) await lo.ready;   // deep link, nothing to look at yet: the small file goes first, alone
     const hi = load(photoSrc(ph, target(ph.ratio).w));
-    if (!hi.ok && !lo.ok) await Promise.race([hi.ready, lo.ready]);
-    if (!hi.ok && lo.ok && live()) put(c, lo, i);
+    if (!hi.ok && !ready(ph)) await Promise.race([hi.ready, lo.ready]);
+    const r = !hi.ok && ready(ph);
+    if (r && live()) put(c, r, i);
     await hi.ready;
     if (!live()) return;
     if (hi.ok) put(c, hi, i);
@@ -386,6 +409,7 @@
     c.li.classList.add('calm');   // no hover zoom until the pointer moves again
     addEventListener('pointermove', () => c.li.classList.remove('calm'), { once: true });
     c.btn.focus({ preventScroll: true });
+    if (io) warmAll();   // tiles that came on screen while the viewer was open
     c.fly.style.opacity = 0;   // the tile is back underneath: the photo fades off it instead of being swapped for it
     await done(c.fly);
     c.fly.remove();

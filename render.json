@@ -1,6 +1,6 @@
 {
-  "gallery": [960, 1600, 2400],
+  "gallery": [480, 960, 1280, 1600, 2400],
   "cover": [480, 800, 1200],
-  "quality": 82,
-  "master": {"max": 3200, "quality": 90}
+  "quality": 78,
+  "master": {"max": 3200, "quality": 85}
 }
