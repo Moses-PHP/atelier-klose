@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ateliér Klose – architektura</title>
+<meta name="description" content="Ateliér Klose – Ing. arch. Aleš Klose. Rodinné domy, rekonstrukce a novostavby.">
+<!-- preview on GitHub Pages: drop noindex when the site moves to atelier-klose.cz -->
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#101010">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/rajdhani-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <a class="logo" href="./" aria-label="Ateliér Klose"></a>
+  <div class="labels">
+    <button class="label kontakt-btn" id="kontaktBtn" aria-expanded="false" aria-controls="kontakt">Kontakt</button>
+    <div class="kontakt" id="kontakt">
+      <address>
+        <span class="who">Ing. arch. Aleš Klose</span>
+        <span>Husova 214, 530 03 Pardubice</span>
+        <a href="tel:+420604743742">+420 604 743 742</a>
+        <a href="mailto:atelier.klose@seznam.cz">atelier.klose@seznam.cz</a>
+      </address>
+    </div>
+    <h1 class="label ref">Reference</h1>
+  </div>
+</header>
+
+<main>
+  <ul class="grid" id="grid" aria-label="Reference – stavby"></ul>
+</main>
+
+<footer class="foot">
+  <span>© Ateliér Klose</span>
+</footer>
+
+<div class="viewer" id="viewer" aria-hidden="true">
+  <div class="backdrop"></div>
+  <button class="v-btn v-close" id="vclose" aria-label="Zavřít">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+  </button>
+  <button class="v-btn v-prev" id="vprev" aria-label="Předchozí fotka">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4l-8 8 8 8"/></svg>
+  </button>
+  <button class="v-btn v-next" id="vnext" aria-label="Další fotka">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l8 8-8 8"/></svg>
+  </button>
+  <div class="v-meta" id="vmeta"></div>
+  <nav class="strip" id="strip" aria-label="Fotky stavby"></nav>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

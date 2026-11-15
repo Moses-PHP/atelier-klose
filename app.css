@@ -1,0 +1,143 @@
+:root {
+  --bg: #101010;
+  --fg: #ebe8e3;
+  --dim: #8a8781;
+  --radius: 6px;
+  --gap: clamp(12px, 1.6vw, 24px);
+  --pad: clamp(32px, 16vw, 320px);
+  /* motion: one small set of curves and durations, nothing else is used below (app.js reads them too) */
+  --ease: cubic-bezier(.3, .2, .2, 1);        /* geometry: moves off at once, long soft landing */
+  --ease-out: cubic-bezier(.22, .61, .36, 1); /* things arriving, hover feedback */
+  --t: 620ms;       /* tile <-> viewer: frame, backdrop, tiles */
+  --t-step: 480ms;  /* photo -> photo frame, Kontakt */
+  --t-fade: 400ms;  /* dissolve between photos (linear) */
+  --t-in: 360ms;    /* arrivals: viewer buttons, strip, header */
+  --t-out: 220ms;   /* departures and small state changes */
+  --back: calc(var(--t) * .3); /* how long the page waits before it comes back behind a closing photo */
+  --strip-h: 92px;
+  --logo: clamp(140px, 15vw, 208px);
+  color-scheme: dark;
+}
+/* the flying frame as plain numbers (px): app.js animates them, nothing is laid out or rounded along the way */
+@property --fx { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --fy { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --fw { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --fh { syntax: '<number>'; inherits: true; initial-value: 0; }
+* { box-sizing: border-box; }
+html { background: var(--bg); color: var(--fg); -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; scrollbar-width: none; overflow-x: clip; } /* no page scrollbar at all: nothing to shift when the viewer locks the scroll; clip: tiles that move away must not widen the page (phones would zoom out) */
+html::-webkit-scrollbar { display: none; }
+body { margin: 0; font: 400 16px/1.5 Rajdhani, "Helvetica Neue", Arial, system-ui, sans-serif; min-height: 100vh; }
+body.locked { overflow: hidden; }
+body.turn { --back: 0ms; } /* closed while still opening: nothing waits */
+button { font: inherit; color: inherit; }
+.instant *, .instant *::before, .instant *::after { transition: none !important; } /* deep link: the state is simply there */
+
+/* header */
+.top { max-width: calc(1680px + 2 * var(--pad)); margin: 0 auto; padding: clamp(36px, 6vw, 96px) var(--pad) clamp(18px, 2vw, 28px);
+  transition: opacity var(--t-in) var(--ease-out) var(--back); }
+/* logo on top, the menu (Kontakt + Reference) under it */
+.labels { margin-top: clamp(28px, 3.2vw, 48px); }
+.labels .ref { margin-top: clamp(14px, 1.4vw, 20px); }
+.logo { display: block; width: var(--logo); aspect-ratio: 1; color: var(--fg); margin-left: calc(var(--logo) * -.123); } /* svg has inner margin (the frame is left out) -> K lines up with the menu text */
+.logo svg { width: 100%; height: 100%; display: block; }
+
+/* labels in the spirit of the logo lettering: thin caps, wide tracking */
+.label { all: unset; display: block; font: 400 clamp(21px, 1.8vw, 28px)/1 Rajdhani, sans-serif; text-transform: uppercase; letter-spacing: .38em; color: var(--fg); }
+.kontakt-btn { cursor: pointer; }
+.kontakt-btn:focus-visible { outline: 1px solid var(--fg); outline-offset: 6px; }
+.kontakt { display: grid; grid-template-rows: 0fr; overflow: hidden; transition: grid-template-rows var(--t-step) var(--ease); } /* clip here, so the text is revealed exactly as the space opens */
+.kontakt.open { grid-template-rows: 1fr; }
+.kontakt address { min-height: 0; font-style: normal; display: flex; flex-direction: column; gap: 4px;
+  font-size: 17px; letter-spacing: .06em; color: var(--dim); opacity: 0; transition: opacity calc(var(--t-step) * .7) linear; } /* closing: fades while the space closes over it */
+.kontakt.open address { opacity: 1; transition: opacity var(--t-in) var(--ease-out) calc(var(--t-out) / 4); }
+.kontakt address > :first-child { margin-top: 16px; }
+.kontakt address > :last-child { margin-bottom: 10px; }
+.kontakt .who { color: var(--fg); font-weight: 500; }
+.kontakt a { color: inherit; text-decoration: none; width: fit-content; border-bottom: 1px solid transparent; transition: color var(--t-out) var(--ease-out), border-color var(--t-out) var(--ease-out); }
+.kontakt a:hover, .kontakt a:focus-visible { color: var(--fg); border-color: currentColor; outline: none; }
+
+
+/* grid of square covers: 2 columns on phones, 3 on tablets, 4 on desktop */
+main { padding: 0 var(--pad); }
+.grid { list-style: none; margin: 0 auto; padding: 0; max-width: 1680px;
+  display: grid; gap: var(--gap); grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 700px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1240px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+/* app.js shifts the tiles away from the chosen one and back (transform); --d is the stagger on the way back */
+.tile { position: relative; aspect-ratio: 1;
+  transition: scale var(--t) var(--ease) var(--d, 0ms), opacity var(--t-in) var(--ease-out) calc(var(--back) + var(--d, 0ms)); } /* coming back */
+.tile.away { opacity: 0; pointer-events: none; scale: .94;
+  transition: scale var(--t) var(--ease), opacity calc(var(--t) * .45) linear; } /* leaving: gone before it gets far */
+.tile button { all: unset; position: absolute; inset: 0; cursor: pointer; border-radius: var(--radius); overflow: hidden; background: #1b1b1b;
+  outline: 2px solid transparent; outline-offset: 3px; transition: outline-color var(--t-in) var(--ease-out); }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--t) var(--ease-out); }
+.tile button:hover img { transform: scale(1.025); }
+.tile.calm button:hover img { transform: none; } /* just landed under a resting pointer: no afterthought zoom */
+.tile button:focus-visible { outline-color: var(--fg); }
+/* the chosen tile while its photo is out: the picture is gone at once (it flies), a focus ring fades first */
+.tile.hide button { visibility: hidden; background: none; pointer-events: none; outline-color: transparent; transition: outline-color var(--t-out) linear, visibility 0s linear var(--t-out); }
+.tile.hide img, .tile.hide .cap { visibility: hidden; }
+.tile .cap { position: absolute; left: 14px; bottom: 12px; font-size: 15px; letter-spacing: .08em; text-shadow: 0 1px 8px rgba(0,0,0,.6); opacity: 0; transition: opacity var(--t-in) var(--ease-out); }
+.tile button:hover .cap, .tile button:focus-visible .cap { opacity: 1; }
+
+.foot { padding: calc(var(--pad) * .6) var(--pad) clamp(32px, 4vw, 64px); color: var(--dim); font-size: 14px; letter-spacing: .12em; transition: opacity var(--t-in) var(--ease-out) var(--back); }
+body.open .top, body.open .foot { opacity: 0; transition: opacity calc(var(--t) * .45) linear; }
+
+/* viewer */
+.viewer { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+.viewer.on { pointer-events: auto; }
+.backdrop { position: absolute; inset: 0; background: var(--bg); opacity: 0; transition: opacity var(--t) var(--ease); }
+.viewer.on .backdrop { opacity: .96; }
+/* the flying frame: .fly covers the viewport and shows what is inside the rect --fx/--fy/--fw/--fh, which app.js
+   sends tile <-> viewer (--t) or reshapes photo -> photo (--t-step), both on --ease */
+.fly { position: fixed; inset: 0; z-index: 11; touch-action: pinch-zoom; transition: opacity var(--t-out) linear; /* touch-action: swipes belong to app.js, not to the browser */
+  clip-path: inset(calc(var(--fy) * 1px) calc(100% - (var(--fx) + var(--fw)) * 1px) calc(100% - (var(--fy) + var(--fh)) * 1px) calc(var(--fx) * 1px) round var(--radius)); }
+.fly .in { position: absolute; inset: 0; isolation: isolate; transition: transform var(--t) var(--ease-out); /* takes over the tile's hover zoom (about the frame's centre) and lets it go */
+  transform-origin: calc((var(--fx) + var(--fw) / 2) * 1px) calc((var(--fy) + var(--fh) / 2) * 1px); }
+/* photo layers add up (plus-lighter): app.js fades one to 1 and the rest to 0 on one clock = a dissolve without a dip.
+   A layer is laid out at its photo's place in the viewer (--X/--Y/--W/--H, set by app.js) and moved from there so
+   that the photo covers the frame, cropped at --cx/--cy like the tile: one translate + uniform scale, so it glides
+   between pixels. At its own place the transform is none. (--ox/--oy: a square cover is a part of its photo.) */
+.fly img { position: absolute; display: block; object-fit: cover; transform-origin: 0 0; mix-blend-mode: plus-lighter; user-select: none; -webkit-user-drag: none;
+  --k: max(var(--fw) / var(--W), var(--fh) / var(--H));
+  transform: translate(calc((var(--fx) - var(--X) + (var(--fw) - var(--W) * var(--k)) * var(--cx) + (var(--k) - 1) * var(--ox)) * 1px),
+                       calc((var(--fy) - var(--Y) + (var(--fh) - var(--H) * var(--k)) * var(--cy) + (var(--k) - 1) * var(--oy)) * 1px)) scale(var(--k)); }
+
+.v-btn { position: fixed; z-index: 12; width: 48px; height: 48px; border: 0; border-radius: 50%; background: rgba(20,20,20,.55);
+  backdrop-filter: blur(6px); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--t-out) linear, background var(--t-out) var(--ease-out); }
+.v-btn:hover { background: rgba(50,50,50,.75); }
+.v-btn svg { width: 22px; height: 22px; fill: none; stroke: var(--fg); stroke-width: 1.6; }
+.v-close { top: 14px; right: 14px; }
+.v-prev { left: 14px; top: calc(50% - var(--strip-h) / 2 - 24px); }
+.v-next { right: 14px; top: calc(50% - var(--strip-h) / 2 - 24px); }
+.v-meta { position: fixed; z-index: 12; left: 20px; top: 24px; font-size: 15px; color: var(--dim); letter-spacing: .12em; opacity: 0; transition: opacity var(--t-out) linear; }
+/* the UI eases in while the photo is landing (same gesture), and leaves at once */
+.viewer.ui .v-btn { opacity: 1; transition: opacity var(--t-in) var(--ease-out) calc(var(--t) * .4), background var(--t-out) var(--ease-out); }
+.viewer.ui .v-meta { opacity: 1; transition: opacity var(--t-in) var(--ease-out) calc(var(--t) * .4); }
+
+.strip { position: fixed; z-index: 12; left: 0; right: 0; bottom: 0; height: var(--strip-h); padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  display: flex; justify-content: safe center; overflow-x: auto; scrollbar-width: none;
+  opacity: 0; transform: translateY(24px); transition: transform var(--t-out) linear, opacity var(--t-out) linear; }
+.strip::-webkit-scrollbar { display: none; }
+.viewer.ui .strip { opacity: 1; transform: none; transition: transform var(--t-in) var(--ease-out) calc(var(--t) * .4), opacity var(--t-in) var(--ease-out) calc(var(--t) * .4); }
+.strip .row { display: flex; gap: 8px; flex: none; height: 100%; } /* app.js scrolls the strip and plays the way on the row */
+.strip button { all: unset; flex: none; height: 100%; border-radius: 4px; overflow: hidden; cursor: pointer; background: #1b1b1b; opacity: .45; transition: opacity var(--t-in) var(--ease-out); } /* width comes from aspect-ratio set by app.js */
+.strip button:hover { opacity: .8; }
+.strip button[aria-current="true"] { opacity: 1; }
+.strip button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.strip img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity var(--t-in) var(--ease-out); }
+.strip img.in { opacity: 1; }
+
+@media (max-width: 559px) {
+  :root { --strip-h: 76px; }
+  .v-prev, .v-next { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --t: 1ms; --t-step: 1ms; --t-fade: 1ms; --t-in: 1ms; --t-out: 1ms; }
+  .tile { transform: none !important; scale: none !important; }
+  .strip, .tile button:hover img { transform: none; }
+}
+@media (forced-colors: active) { /* a transparent outline would be painted there: show it on focus only */
+  .tile button { outline: none; }
+  .tile button:focus-visible { outline: 2px solid CanvasText; }
+}
